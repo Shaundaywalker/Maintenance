@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run *)",
+      "Bash(npm install *)",
+      "Bash(echo \"PID: $!\")",
+      "Bash(lsof -nP -iTCP:3000 -sTCP:LISTEN)",
+      "Bash(kill 8634 8650)",
+      "Bash(PORT=3001 npm run dev)",
+      "Bash(echo \"started PID $!\")",
+      "Bash(railway --version)",
+      "Bash(git remote *)",
+      "Bash(grep -niA8 -m3 -E \"railway login|Connect Railway|railway CLI|install.*railway\" README.md)",
+      "Bash(railway whoami *)",
+      "Bash(gh --version)",
+      "Bash(gh auth *)",
+      "Bash(git config *)",
+      "Bash(git init *)",
+      "Bash(git add *)"
+    ]
+  }
+}

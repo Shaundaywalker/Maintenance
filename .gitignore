@@ -1,0 +1,33 @@
+# dependencies
+/node_modules
+/.pnp
+.pnp.*
+
+# next.js
+/.next/
+/out/
+next-env.d.ts
+*.tsbuildinfo
+
+# production
+/build
+
+# local database (SQLite files live here in dev)
+/data
+*.db
+*.db-shm
+*.db-wal
+
+# environment
+.env
+.env*.local
+
+# debug / misc
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.DS_Store
+*.pem
+/coverage
+.vscode/*
+!.vscode/extensions.json
