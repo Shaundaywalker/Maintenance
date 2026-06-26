@@ -11,7 +11,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { getBhoOverview, defaultWindow } from "@/lib/gaap/metrics";
+import { getBhoOverview, defaultWindow, type GroupSummary } from "@/lib/gaap/metrics";
 import { BHO_STORES_NO_DATA, MANAGERS } from "@/lib/gaap/stores";
 import { fmtNum, fmtPct, fmtZAR, fmtZAR2 } from "@/lib/format";
 import {
@@ -34,13 +34,50 @@ function Stat({ label, value, sub }: { label: string; value: string; sub?: strin
   );
 }
 
+/** A "turnover by X" bar chart + summary list, used for both managers and types. */
+function GroupBreakdown({ title, groups }: { title: string; groups: GroupSummary[] }) {
+  const chart = groups.map((g) => ({ name: g.label, value: g.turnoverExcl }));
+  return (
+    <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+      <Card className="lg:col-span-2">
+        <CardHeader>
+          <CardTitle className="text-base">{title}</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <DepartmentBarChart data={chart} />
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Summary</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3 text-sm">
+          {groups.map((g) => (
+            <div key={g.label} className="flex items-center justify-between">
+              <div>
+                <div className="font-medium">{g.label}</div>
+                <div className="text-muted-foreground text-xs">
+                  {g.storeCount} stores · {fmtPct(g.gpPct)} GP
+                </div>
+              </div>
+              <div className="text-right tabular-nums">
+                <div>{fmtZAR(g.turnoverExcl)}</div>
+                <div className="text-muted-foreground text-xs">{fmtZAR2(g.avgSpend)} avg</div>
+              </div>
+            </div>
+          ))}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
 export default async function DashboardPage() {
   await requireUser();
   const { start, end } = defaultWindow();
   const bho = await getBhoOverview(start, end);
 
   const hasData = bho.totals.transactions > 0;
-  const managerChart = bho.managers.map((m) => ({ name: m.manager, value: m.turnoverExcl }));
 
   return (
     <div className="flex flex-col gap-6">
@@ -73,7 +110,7 @@ export default async function DashboardPage() {
       ) : (
         <>
           {/* Group KPI row */}
-          <div className="grid grid-cols-2 gap-4 lg:grid-cols-3 xl:grid-cols-6">
+          <div className="grid grid-cols-2 gap-4 lg:grid-cols-4 xl:grid-cols-7">
             <Stat label="Group turnover (excl. VAT)" value={fmtZAR(bho.totals.turnoverExcl)} />
             <Stat label="Average spend" value={fmtZAR2(bho.totals.avgSpend)} sub="per transaction" />
             <Stat
@@ -83,8 +120,12 @@ export default async function DashboardPage() {
             />
             <Stat label="Transactions" value={fmtNum(bho.totals.transactions)} />
             <Stat label="Stores" value={fmtNum(bho.storeCount)} />
-            <Stat label="Voids" value={fmtZAR(bho.totals.voids)} />
+            <Stat label="Wastage" value={fmtZAR(Math.abs(bho.totals.wastage))} />
+            <Stat label="Stock variance" value={fmtZAR(bho.totals.stockVariance)} />
           </div>
+
+          {/* Store-type split (All Day Café vs XS) */}
+          <GroupBreakdown title="Turnover by store type" groups={bho.types} />
 
           {/* Group trends */}
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
@@ -107,39 +148,7 @@ export default async function DashboardPage() {
           </div>
 
           {/* By operations manager */}
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-            <Card className="lg:col-span-2">
-              <CardHeader>
-                <CardTitle className="text-base">Turnover by operations manager</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <DepartmentBarChart data={managerChart} />
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Manager summary</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3 text-sm">
-                {bho.managers.map((m) => (
-                  <div key={m.manager} className="flex items-center justify-between">
-                    <div>
-                      <div className="font-medium">{m.manager}</div>
-                      <div className="text-muted-foreground text-xs">
-                        {m.storeCount} stores · {fmtPct(m.gpPct)} GP
-                      </div>
-                    </div>
-                    <div className="text-right tabular-nums">
-                      <div>{fmtZAR(m.turnoverExcl)}</div>
-                      <div className="text-muted-foreground text-xs">
-                        {fmtZAR2(m.avgSpend)} avg
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
-          </div>
+          <GroupBreakdown title="Turnover by operations manager" groups={bho.managers} />
 
           {/* Store leaderboard, grouped by manager — click to drill into a store */}
           {MANAGERS.map((mgr) => {
@@ -155,6 +164,7 @@ export default async function DashboardPage() {
                       <TableHeader>
                         <TableRow>
                           <TableHead>Store</TableHead>
+                          <TableHead>Type</TableHead>
                           <TableHead className="text-right">Turnover (excl)</TableHead>
                           <TableHead className="text-right">Transactions</TableHead>
                           <TableHead className="text-right">Avg spend</TableHead>
@@ -177,6 +187,11 @@ export default async function DashboardPage() {
                                   </Badge>
                                 ) : null}
                               </Link>
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant="secondary" className="text-xs font-normal">
+                                {s.type}
+                              </Badge>
                             </TableCell>
                             <TableCell className="text-right tabular-nums">
                               {fmtZAR(s.turnoverExcl)}

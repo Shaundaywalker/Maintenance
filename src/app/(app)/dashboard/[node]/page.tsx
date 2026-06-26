@@ -86,8 +86,8 @@ export default async function StorePage({
         <Stat label="Average spend" value={fmtZAR2(m.totals.avgSpend)} sub="per transaction" />
         <Stat label="Gross profit" value={fmtZAR(m.totals.grossProfit)} sub={`${fmtPct(m.totals.gpPct)} margin`} />
         <Stat label="Transactions" value={fmtNum(m.totals.transactions)} />
-        <Stat label="Voids" value={fmtZAR(m.totals.voids)} />
         <Stat label="Wastage" value={fmtZAR(Math.abs(m.totals.wastage))} />
+        <Stat label="Stock variance" value={fmtZAR(m.totals.stockVariance)} />
       </div>
 
       {/* Trends */}
@@ -126,8 +126,8 @@ export default async function StorePage({
                   <TableHead className="text-right">Avg spend</TableHead>
                   <TableHead className="text-right">Gross profit</TableHead>
                   <TableHead className="text-right">GP %</TableHead>
-                  <TableHead className="text-right">Voids</TableHead>
                   <TableHead className="text-right">Wastage</TableHead>
+                  <TableHead className="text-right">Stock variance</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -139,8 +139,8 @@ export default async function StorePage({
                     <TableCell className="text-right tabular-nums">{fmtZAR2(mo.avgSpend)}</TableCell>
                     <TableCell className="text-right tabular-nums">{fmtZAR(mo.grossProfit)}</TableCell>
                     <TableCell className="text-right tabular-nums">{fmtPct(mo.gpPct)}</TableCell>
-                    <TableCell className="text-right tabular-nums">{fmtZAR(mo.voids)}</TableCell>
                     <TableCell className="text-right tabular-nums">{fmtZAR(Math.abs(mo.wastage))}</TableCell>
+                    <TableCell className="text-right tabular-nums">{fmtZAR(mo.stockVariance)}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>

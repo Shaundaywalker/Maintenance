@@ -32,7 +32,7 @@ export const BHO_STORES: StoreConfig[] = [
   { node: "C0399R0001B0013", name: "Greenpoint", manager: "Roubaix", format: "All Day Café", storeNumber: "CPTG1973", system: "legacy" },
   { node: "C0399R0001B0019", name: "Kloof (112 Kloof)", manager: "Roubaix", format: "All Day Café", storeNumber: "CPTG38504", system: "legacy" },
   { node: "C0399R0001B0024", name: "Bree Street", manager: "Roubaix", format: "All Day Café", storeNumber: "CPTG42268", system: "legacy" },
-  { node: "C0399R0003B0013", name: "St Cyprian's", manager: "Roubaix", format: "XS Café", storeNumber: "CPTG054059", system: "legacy" },
+  { node: "C0399R0003B0013", name: "St Cyprian's", manager: "Roubaix", format: "XS", storeNumber: "CPTG054059", system: "legacy" },
 
   // ── Holly ──────────────────────────────────────────────────────────────
   { node: "C0399R0001B0025", name: "Blouberg", manager: "Holly", format: "All Day Café", storeNumber: "CPTG42231", system: "legacy" },
@@ -48,17 +48,17 @@ export const BHO_STORES: StoreConfig[] = [
   { node: "C0399R0001B0050", name: "Canal Walk", manager: "Holly", format: "All Day Café", storeNumber: "CPTG057772", system: "legacy" },
 
   // ── Nicole ─────────────────────────────────────────────────────────────
-  { node: "C0399R0003B0004", name: "Pineworx", manager: "Nicole", format: "XS Café", storeNumber: "CPTG052064", system: "legacy" },
-  { node: "C0399R0003B0015", name: "Foreshore", manager: "Nicole", format: "XS Café", storeNumber: "CPTG054291", system: "legacy" },
-  { node: "C0399R0003B0035", name: "Riverlands", manager: "Nicole", format: "XS Café", storeNumber: "CPTG066711", system: "legacy" },
-  { node: "C0399R0003B0030", name: "Cavendish", manager: "Nicole", format: "XS Café", storeNumber: "CPTG065865", system: "legacy" },
-  { node: "C0399R0003B0008", name: "Brackenfell", manager: "Nicole", format: "XS Café", storeNumber: "CPTG047105", system: "legacy" },
-  { node: "C0399R0003B0021", name: "Cape Gate", manager: "Nicole", format: "XS Café", storeNumber: "CPTG056578", system: "legacy" },
-  { node: "C0399R0003B0019", name: "Westlake", manager: "Nicole", format: "XS Café", storeNumber: "CPTG055856", system: "legacy" },
-  { node: "C0399R0003B0011", name: "Salt River", manager: "Nicole", format: "XS Café", storeNumber: "CPTG1884", system: "legacy" },
-  { node: "C0399R0003B0010", name: "Sea Point", manager: "Nicole", format: "XS Café", storeNumber: "CPTG1402", system: "legacy" },
-  { node: "C0399R0003B0016", name: "Paardevlei", manager: "Nicole", format: "XS Café", storeNumber: "CPTG055321", system: "legacy" },
-  { node: "C0399R0003B0001", name: "Muizenberg", manager: "Nicole", format: "XS Café", storeNumber: "CPTG1883", system: "legacy" },
+  { node: "C0399R0003B0004", name: "Pineworx", manager: "Nicole", format: "XS", storeNumber: "CPTG052064", system: "legacy" },
+  { node: "C0399R0003B0015", name: "Foreshore", manager: "Nicole", format: "XS", storeNumber: "CPTG054291", system: "legacy" },
+  { node: "C0399R0003B0035", name: "Riverlands", manager: "Nicole", format: "XS", storeNumber: "CPTG066711", system: "legacy" },
+  { node: "C0399R0003B0030", name: "Cavendish", manager: "Nicole", format: "XS", storeNumber: "CPTG065865", system: "legacy" },
+  { node: "C0399R0003B0008", name: "Brackenfell", manager: "Nicole", format: "XS", storeNumber: "CPTG047105", system: "legacy" },
+  { node: "C0399R0003B0021", name: "Cape Gate", manager: "Nicole", format: "XS", storeNumber: "CPTG056578", system: "legacy" },
+  { node: "C0399R0003B0019", name: "Westlake", manager: "Nicole", format: "XS", storeNumber: "CPTG055856", system: "legacy" },
+  { node: "C0399R0003B0011", name: "Salt River", manager: "Nicole", format: "XS", storeNumber: "CPTG1884", system: "legacy" },
+  { node: "C0399R0003B0010", name: "Sea Point", manager: "Nicole", format: "XS", storeNumber: "CPTG1402", system: "legacy" },
+  { node: "C0399R0003B0016", name: "Paardevlei", manager: "Nicole", format: "XS", storeNumber: "CPTG055321", system: "legacy" },
+  { node: "C0399R0003B0001", name: "Muizenberg", manager: "Nicole", format: "XS", storeNumber: "CPTG1883", system: "legacy" },
 ];
 
 /** Stores known to BHO but not yet wired to a data source. */
@@ -69,6 +69,10 @@ export const BHO_STORES_NO_DATA = [
 ] as const;
 
 export const MANAGERS = ["Roubaix", "Holly", "Nicole"] as const;
+
+/** The two store formats. Every BHO store is one of these. */
+export const STORE_TYPES = ["All Day Café", "XS"] as const;
+export type StoreType = (typeof STORE_TYPES)[number];
 
 /**
  * Fixed history start for the dashboard + backfill. Anchored to 1 June 2025 so

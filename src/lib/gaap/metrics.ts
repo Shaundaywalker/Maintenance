@@ -3,7 +3,7 @@ import { and, eq, gte, lte, asc, inArray } from "drizzle-orm";
 import { db } from "@/db";
 import { gaapDailyMetrics, type GaapDailyMetrics } from "@/db/schema";
 import { GAAP_STORE_NODE } from "./config";
-import { BHO_STORES, BHO_START_DATE, MANAGERS, storeByNode } from "./stores";
+import { BHO_STORES, BHO_START_DATE, MANAGERS, STORE_TYPES, storeByNode } from "./stores";
 
 export interface DailyPoint {
   date: string;
@@ -28,8 +28,8 @@ export interface MetricsBundle {
     gpPct: number;
     transactions: number;
     avgSpend: number;
-    voids: number;
     wastage: number;
+    stockVariance: number;
     days: number;
   };
   daily: DailyPoint[];
@@ -45,8 +45,8 @@ export interface MonthlyPoint {
   transactions: number;
   grossProfit: number;
   gpPct: number;
-  voids: number;
   wastage: number;
+  stockVariance: number;
 }
 
 function parseMap(json: string | null): Record<string, number> {
@@ -101,17 +101,17 @@ export async function getMetrics(
   // Monthly rollup
   const monthMap = new Map<
     string,
-    { turnoverExcl: number; transactions: number; grossProfit: number; voids: number; wastage: number }
+    { turnoverExcl: number; transactions: number; grossProfit: number; wastage: number; stockVariance: number }
   >();
   for (const r of rows) {
     const m = r.date.slice(0, 7); // YYYY-MM
     const cur =
-      monthMap.get(m) ?? { turnoverExcl: 0, transactions: 0, grossProfit: 0, voids: 0, wastage: 0 };
+      monthMap.get(m) ?? { turnoverExcl: 0, transactions: 0, grossProfit: 0, wastage: 0, stockVariance: 0 };
     cur.turnoverExcl += r.turnoverExcl;
     cur.transactions += r.transactionCount;
     cur.grossProfit += r.grossProfit;
-    cur.voids += r.voids;
     cur.wastage += r.wastage;
+    cur.stockVariance += r.shrinkage;
     monthMap.set(m, cur);
   }
   const monthly: MonthlyPoint[] = [...monthMap.entries()]
@@ -123,8 +123,8 @@ export async function getMetrics(
       avgSpend: v.transactions > 0 ? v.turnoverExcl / v.transactions : 0,
       grossProfit: v.grossProfit,
       gpPct: v.turnoverExcl > 0 ? (v.grossProfit / v.turnoverExcl) * 100 : 0,
-      voids: v.voids,
       wastage: v.wastage,
+      stockVariance: v.stockVariance,
     }));
 
   // Department + channel rollups across the window
@@ -158,8 +158,8 @@ export async function getMetrics(
       gpPct: turnoverExcl > 0 ? (grossProfit / turnoverExcl) * 100 : 0,
       transactions,
       avgSpend: transactions > 0 ? lineTotalForAvg / transactions : 0,
-      voids: sum(rows, (r) => r.voids),
       wastage: sum(rows, (r) => r.wastage),
+      stockVariance: sum(rows, (r) => r.shrinkage),
       days: rows.length,
     },
     daily,
@@ -179,7 +179,7 @@ export interface StoreSummary {
   node: string;
   name: string;
   manager: string;
-  format: string;
+  type: string;
   turnoverExcl: number;
   grossProfit: number;
   gpPct: number;
@@ -188,8 +188,9 @@ export interface StoreSummary {
   hasData: boolean;
 }
 
-export interface ManagerSummary {
-  manager: string;
+export interface GroupSummary {
+  /** Manager name or store-type label. */
+  label: string;
   turnoverExcl: number;
   transactions: number;
   avgSpend: number;
@@ -208,11 +209,12 @@ export interface BhoOverview {
     gpPct: number;
     transactions: number;
     avgSpend: number;
-    voids: number;
     wastage: number;
+    stockVariance: number;
   };
   monthly: Array<{ month: string; turnoverExcl: number; avgSpend: number; transactions: number }>;
-  managers: ManagerSummary[];
+  managers: GroupSummary[];
+  types: GroupSummary[];
   stores: StoreSummary[];
 }
 
@@ -260,7 +262,7 @@ export async function getBhoOverview(start: string, end: string): Promise<BhoOve
       node: cfg.node,
       name: cfg.name,
       manager: cfg.manager,
-      format: cfg.format,
+      type: cfg.format,
       turnoverExcl: te,
       grossProfit: gp,
       gpPct: te > 0 ? (gp / te) * 100 : 0,
@@ -270,20 +272,24 @@ export async function getBhoOverview(start: string, end: string): Promise<BhoOve
     };
   }).sort((a, b) => b.turnoverExcl - a.turnoverExcl);
 
-  const managers: ManagerSummary[] = MANAGERS.map((mgr) => {
-    const ss = stores.filter((s) => s.manager === mgr);
-    const te = sum(ss, (s) => s.turnoverExcl);
-    const gp = sum(ss, (s) => s.grossProfit);
-    const tx = sum(ss, (s) => s.transactions);
-    return {
-      manager: mgr,
-      turnoverExcl: te,
-      transactions: tx,
-      avgSpend: tx > 0 ? te / tx : 0,
-      gpPct: te > 0 ? (gp / te) * 100 : 0,
-      storeCount: ss.length,
-    };
-  });
+  const groupBy = (key: (s: StoreSummary) => string, labels: readonly string[]): GroupSummary[] =>
+    labels.map((label) => {
+      const ss = stores.filter((s) => key(s) === label);
+      const te = sum(ss, (s) => s.turnoverExcl);
+      const gp = sum(ss, (s) => s.grossProfit);
+      const tx = sum(ss, (s) => s.transactions);
+      return {
+        label,
+        turnoverExcl: te,
+        transactions: tx,
+        avgSpend: tx > 0 ? te / tx : 0,
+        gpPct: te > 0 ? (gp / te) * 100 : 0,
+        storeCount: ss.length,
+      };
+    });
+
+  const managers = groupBy((s) => s.manager, MANAGERS);
+  const types = groupBy((s) => s.type, STORE_TYPES);
 
   const totalTE = sum(rows, (r) => r.turnoverExcl);
   const totalGP = sum(rows, (r) => r.grossProfit);
@@ -309,11 +315,12 @@ export async function getBhoOverview(start: string, end: string): Promise<BhoOve
       gpPct: totalTE > 0 ? (totalGP / totalTE) * 100 : 0,
       transactions: totalTx,
       avgSpend: totalTx > 0 ? totalTE / totalTx : 0,
-      voids: sum(rows, (r) => r.voids),
       wastage: sum(rows, (r) => r.wastage),
+      stockVariance: sum(rows, (r) => r.shrinkage),
     },
     monthly,
     managers,
+    types,
     stores,
   };
 }
