@@ -17,6 +17,7 @@
     "db:seed": "node --env-file-if-exists=.env scripts/seed.mjs",
     "db:studio": "drizzle-kit studio",
     "gaap:backfill": "node --env-file-if-exists=.env --import tsx scripts/gaap-backfill.ts",
+    "gaap:upload": "node --env-file-if-exists=.env --import tsx scripts/gaap-upload.ts",
     "release": "npm run db:migrate && npm run db:seed"
   },
   "dependencies": {

@@ -1,8 +1,9 @@
 import "server-only";
-import { and, eq, gte, lte, asc } from "drizzle-orm";
+import { and, eq, gte, lte, asc, inArray } from "drizzle-orm";
 import { db } from "@/db";
 import { gaapDailyMetrics, type GaapDailyMetrics } from "@/db/schema";
 import { GAAP_STORE_NODE } from "./config";
+import { BHO_STORES, BHO_START_DATE, MANAGERS, storeByNode } from "./stores";
 
 export interface DailyPoint {
   date: string;
@@ -32,9 +33,20 @@ export interface MetricsBundle {
     days: number;
   };
   daily: DailyPoint[];
-  monthly: Array<{ month: string; turnoverExcl: number; avgSpend: number; transactions: number }>;
+  monthly: MonthlyPoint[];
   departments: Array<{ name: string; value: number }>;
   channels: Array<{ name: string; value: number }>;
+}
+
+export interface MonthlyPoint {
+  month: string;
+  turnoverExcl: number;
+  avgSpend: number;
+  transactions: number;
+  grossProfit: number;
+  gpPct: number;
+  voids: number;
+  wastage: number;
 }
 
 function parseMap(json: string | null): Record<string, number> {
@@ -46,12 +58,9 @@ function parseMap(json: string | null): Record<string, number> {
   }
 }
 
-/** Default window: last 12 months up to today. */
+/** Default window: from the fixed BHO history start up to today. */
 export function defaultWindow(): { start: string; end: string } {
-  const end = new Date();
-  const start = new Date();
-  start.setUTCFullYear(start.getUTCFullYear() - 1);
-  return { start: start.toISOString().slice(0, 10), end: end.toISOString().slice(0, 10) };
+  return { start: BHO_START_DATE, end: new Date().toISOString().slice(0, 10) };
 }
 
 export async function getMetrics(
@@ -90,21 +99,32 @@ export async function getMetrics(
   const lineTotalForAvg = sum(rows, (r) => r.avgSpend * r.transactionCount);
 
   // Monthly rollup
-  const monthMap = new Map<string, { turnoverExcl: number; transactions: number }>();
+  const monthMap = new Map<
+    string,
+    { turnoverExcl: number; transactions: number; grossProfit: number; voids: number; wastage: number }
+  >();
   for (const r of rows) {
     const m = r.date.slice(0, 7); // YYYY-MM
-    const cur = monthMap.get(m) ?? { turnoverExcl: 0, transactions: 0 };
+    const cur =
+      monthMap.get(m) ?? { turnoverExcl: 0, transactions: 0, grossProfit: 0, voids: 0, wastage: 0 };
     cur.turnoverExcl += r.turnoverExcl;
     cur.transactions += r.transactionCount;
+    cur.grossProfit += r.grossProfit;
+    cur.voids += r.voids;
+    cur.wastage += r.wastage;
     monthMap.set(m, cur);
   }
-  const monthly = [...monthMap.entries()]
+  const monthly: MonthlyPoint[] = [...monthMap.entries()]
     .sort((a, b) => a[0].localeCompare(b[0]))
     .map(([month, v]) => ({
       month,
       turnoverExcl: v.turnoverExcl,
       transactions: v.transactions,
       avgSpend: v.transactions > 0 ? v.turnoverExcl / v.transactions : 0,
+      grossProfit: v.grossProfit,
+      gpPct: v.turnoverExcl > 0 ? (v.grossProfit / v.turnoverExcl) * 100 : 0,
+      voids: v.voids,
+      wastage: v.wastage,
     }));
 
   // Department + channel rollups across the window
@@ -151,4 +171,154 @@ export async function getMetrics(
 
 function sum<T>(arr: T[], pick: (t: T) => number): number {
   return arr.reduce((acc, t) => acc + pick(t), 0);
+}
+
+// ── Consolidated BHO overview (all stores) ───────────────────────────────────
+
+export interface StoreSummary {
+  node: string;
+  name: string;
+  manager: string;
+  format: string;
+  turnoverExcl: number;
+  grossProfit: number;
+  gpPct: number;
+  transactions: number;
+  avgSpend: number;
+  hasData: boolean;
+}
+
+export interface ManagerSummary {
+  manager: string;
+  turnoverExcl: number;
+  transactions: number;
+  avgSpend: number;
+  gpPct: number;
+  storeCount: number;
+}
+
+export interface BhoOverview {
+  start: string;
+  end: string;
+  storeCount: number;
+  lastSyncedAt: Date | null;
+  totals: {
+    turnoverExcl: number;
+    grossProfit: number;
+    gpPct: number;
+    transactions: number;
+    avgSpend: number;
+    voids: number;
+    wastage: number;
+  };
+  monthly: Array<{ month: string; turnoverExcl: number; avgSpend: number; transactions: number }>;
+  managers: ManagerSummary[];
+  stores: StoreSummary[];
+}
+
+export async function getBhoOverview(start: string, end: string): Promise<BhoOverview> {
+  const nodes = BHO_STORES.map((s) => s.node);
+  const rows: GaapDailyMetrics[] = await db
+    .select()
+    .from(gaapDailyMetrics)
+    .where(
+      and(
+        inArray(gaapDailyMetrics.node, nodes),
+        gte(gaapDailyMetrics.date, start),
+        lte(gaapDailyMetrics.date, end),
+      ),
+    );
+
+  // Per-store accumulation
+  const perStore = new Map<string, { te: number; gp: number; cos: number; tx: number }>();
+  const monthMap = new Map<string, { te: number; tx: number }>();
+  let lastSyncedAt: Date | null = null;
+
+  for (const r of rows) {
+    const ps = perStore.get(r.node) ?? { te: 0, gp: 0, cos: 0, tx: 0 };
+    ps.te += r.turnoverExcl;
+    ps.gp += r.grossProfit;
+    ps.cos += r.costOfSales;
+    ps.tx += r.transactionCount;
+    perStore.set(r.node, ps);
+
+    const m = r.date.slice(0, 7);
+    const mm = monthMap.get(m) ?? { te: 0, tx: 0 };
+    mm.te += r.turnoverExcl;
+    mm.tx += r.transactionCount;
+    monthMap.set(m, mm);
+
+    if (!lastSyncedAt || r.syncedAt > lastSyncedAt) lastSyncedAt = r.syncedAt;
+  }
+
+  const stores: StoreSummary[] = BHO_STORES.map((cfg) => {
+    const ps = perStore.get(cfg.node);
+    const te = ps?.te ?? 0;
+    const tx = ps?.tx ?? 0;
+    const gp = ps?.gp ?? 0;
+    return {
+      node: cfg.node,
+      name: cfg.name,
+      manager: cfg.manager,
+      format: cfg.format,
+      turnoverExcl: te,
+      grossProfit: gp,
+      gpPct: te > 0 ? (gp / te) * 100 : 0,
+      transactions: tx,
+      avgSpend: tx > 0 ? te / tx : 0,
+      hasData: !!ps,
+    };
+  }).sort((a, b) => b.turnoverExcl - a.turnoverExcl);
+
+  const managers: ManagerSummary[] = MANAGERS.map((mgr) => {
+    const ss = stores.filter((s) => s.manager === mgr);
+    const te = sum(ss, (s) => s.turnoverExcl);
+    const gp = sum(ss, (s) => s.grossProfit);
+    const tx = sum(ss, (s) => s.transactions);
+    return {
+      manager: mgr,
+      turnoverExcl: te,
+      transactions: tx,
+      avgSpend: tx > 0 ? te / tx : 0,
+      gpPct: te > 0 ? (gp / te) * 100 : 0,
+      storeCount: ss.length,
+    };
+  });
+
+  const totalTE = sum(rows, (r) => r.turnoverExcl);
+  const totalGP = sum(rows, (r) => r.grossProfit);
+  const totalTx = sum(rows, (r) => r.transactionCount);
+
+  const monthly = [...monthMap.entries()]
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([month, v]) => ({
+      month,
+      turnoverExcl: v.te,
+      transactions: v.tx,
+      avgSpend: v.tx > 0 ? v.te / v.tx : 0,
+    }));
+
+  return {
+    start,
+    end,
+    storeCount: BHO_STORES.length,
+    lastSyncedAt,
+    totals: {
+      turnoverExcl: totalTE,
+      grossProfit: totalGP,
+      gpPct: totalTE > 0 ? (totalGP / totalTE) * 100 : 0,
+      transactions: totalTx,
+      avgSpend: totalTx > 0 ? totalTE / totalTx : 0,
+      voids: sum(rows, (r) => r.voids),
+      wastage: sum(rows, (r) => r.wastage),
+    },
+    monthly,
+    managers,
+    stores,
+  };
+}
+
+/** Store display name from config, falling back to the DB value. */
+export function storeName(node: string, fallback?: string | null): string {
+  return storeByNode(node)?.name ?? fallback ?? "Store";
 }

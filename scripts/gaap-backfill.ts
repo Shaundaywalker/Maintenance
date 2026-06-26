@@ -1,55 +1,71 @@
 /**
- * One-time (and re-runnable) backfill of GAAP store metrics into local SQLite.
+ * Backfill GAAP store metrics into local SQLite for ALL BHO stores
+ * (or a single node).
  *
- *   npm run gaap:backfill            # last 12 months
- *   npm run gaap:backfill 2025-01-01 2025-12-31
+ *   npm run gaap:backfill                         # all stores, last 12 months
+ *   npm run gaap:backfill -- 2025-01-01 2025-12-31 # all stores, explicit range
+ *   npm run gaap:backfill -- C0399R0001B0043       # one node, last 12 months
  *
  * Idempotent: re-running overwrites the same (node, date) rows.
  */
 import { syncRange } from "@/lib/gaap/sync";
-import { GAAP_STORE_NODE, GAAP_STORE_NAME } from "@/lib/gaap/config";
+import { BHO_STORES, BHO_START_DATE, storeByNode } from "@/lib/gaap/stores";
 
 function today(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
-function oneYearAgo(): string {
-  const d = new Date();
-  d.setUTCFullYear(d.getUTCFullYear() - 1);
-  return d.toISOString().slice(0, 10);
+const args = process.argv.slice(2);
+const nodeArg = args.find((a) => /^C\d/.test(a));
+const dates = args.filter((a) => /^\d{4}-\d{2}-\d{2}$/.test(a));
+const start = dates[0] ?? BHO_START_DATE;
+const end = dates[1] ?? today();
+
+const targets = nodeArg
+  ? BHO_STORES.filter((s) => s.node === nodeArg)
+  : BHO_STORES;
+
+if (targets.length === 0) {
+  console.error(`No store matches node ${nodeArg}`);
+  process.exit(1);
 }
 
-const start = process.argv[2] ?? oneYearAgo();
-const end = process.argv[3] ?? today();
+console.log(`[gaap] backfill ${targets.length} store(s)  ${start} -> ${end}`);
 
-console.log(
-  `[gaap] backfill ${GAAP_STORE_NAME} (${GAAP_STORE_NODE})  ${start} -> ${end}`,
-);
+let grandTurnover = 0;
+let grandTx = 0;
+const failures: string[] = [];
 
-const result = await syncRange(GAAP_STORE_NODE, start, end, (msg) =>
-  console.log("  " + msg),
-);
-
-// Retry any windows that fell over (transient Legacy network blips) once more.
-if (result.failedChunks.length > 0) {
-  console.log(`[gaap] retrying ${result.failedChunks.length} failed window(s)...`);
-  for (const f of result.failedChunks) {
-    const retry = await syncRange(GAAP_STORE_NODE, f.start, f.end, (msg) =>
-      console.log("  " + msg),
-    );
-    result.daysWritten += retry.daysWritten;
-    result.totalTurnoverExcl += retry.totalTurnoverExcl;
-    result.totalTransactions += retry.totalTransactions;
-    if (retry.failedChunks.length > 0) {
-      console.warn(`  STILL FAILING ${f.start}..${f.end}: ${retry.failedChunks[0].error}`);
+for (const store of targets) {
+  process.stdout.write(`  ${store.name.padEnd(20)} `);
+  try {
+    let res = await syncRange(store.node, start, end);
+    // one retry pass for transient blips
+    for (const f of res.failedChunks) {
+      const r = await syncRange(store.node, f.start, f.end);
+      res = {
+        ...res,
+        totalTurnoverExcl: res.totalTurnoverExcl + r.totalTurnoverExcl,
+        totalTransactions: res.totalTransactions + r.totalTransactions,
+        failedChunks: r.failedChunks,
+      };
     }
+    grandTurnover += res.totalTurnoverExcl;
+    grandTx += res.totalTransactions;
+    const flag = res.failedChunks.length ? ` ⚠ ${res.failedChunks.length} failed` : "";
+    console.log(
+      `R${Math.round(res.totalTurnoverExcl).toLocaleString()} excl · ${res.totalTransactions.toLocaleString()} tx${flag}`,
+    );
+    if (res.failedChunks.length) failures.push(store.name);
+  } catch (err) {
+    console.log(`ERROR — ${err instanceof Error ? err.message : String(err)}`);
+    failures.push(store.name);
   }
 }
 
 console.log(
-  `[gaap] done: ${result.daysWritten} day-rows, ` +
-    `turnover(excl) R${Math.round(result.totalTurnoverExcl).toLocaleString()}, ` +
-    `${result.totalTransactions.toLocaleString()} transactions`,
+  `\n[gaap] done: ${targets.length} stores · R${Math.round(grandTurnover).toLocaleString()} excl · ${grandTx.toLocaleString()} transactions`,
 );
-
+if (failures.length) console.log(`[gaap] stores with failures: ${failures.join(", ")}`);
+void storeByNode;
 process.exit(0);

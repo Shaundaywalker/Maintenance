@@ -1,33 +1,33 @@
+import Link from "next/link";
+import { ChevronRight } from "lucide-react";
 import { requireUser } from "@/lib/session";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { getMetrics, defaultWindow } from "@/lib/gaap/metrics";
+import { Badge } from "@/components/ui/badge";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { getBhoOverview, defaultWindow } from "@/lib/gaap/metrics";
+import { BHO_STORES_NO_DATA, MANAGERS } from "@/lib/gaap/stores";
 import { fmtNum, fmtPct, fmtZAR, fmtZAR2 } from "@/lib/format";
 import {
   AvgSpendTrendChart,
-  ChannelLegend,
-  ChannelPieChart,
   DepartmentBarChart,
   RevenueTrendChart,
 } from "@/components/dashboard/charts";
 
 export const dynamic = "force-dynamic";
 
-function Stat({
-  label,
-  value,
-  sub,
-}: {
-  label: string;
-  value: string;
-  sub?: string;
-}) {
+function Stat({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
     <Card>
       <CardContent className="pt-6">
         <div className="text-muted-foreground text-sm">{label}</div>
-        <div className="mt-1 text-2xl font-semibold tracking-tight tabular-nums">
-          {value}
-        </div>
+        <div className="mt-1 text-2xl font-semibold tracking-tight tabular-nums">{value}</div>
         {sub ? <div className="text-muted-foreground mt-1 text-xs">{sub}</div> : null}
       </CardContent>
     </Card>
@@ -37,25 +37,25 @@ function Stat({
 export default async function DashboardPage() {
   await requireUser();
   const { start, end } = defaultWindow();
-  const m = await getMetrics(start, end);
+  const bho = await getBhoOverview(start, end);
 
-  const hasData = m.totals.days > 0;
-  const topDepartments = m.departments.slice(0, 8);
+  const hasData = bho.totals.transactions > 0;
+  const managerChart = bho.managers.map((m) => ({ name: m.manager, value: m.turnoverExcl }));
 
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-end justify-between gap-2">
         <div>
           <h1 className="border-brand inline-block border-b-2 pb-1 text-2xl font-semibold tracking-tight">
-            {m.storeName} — Store Operations
+            BHO — Bootlegger Head Office
           </h1>
           <p className="text-muted-foreground mt-2">
-            Trailing 12 months · {start} → {end}
+            Group consolidated · {bho.storeCount} stores · {start} → {end}
           </p>
         </div>
-        {m.lastSyncedAt ? (
+        {bho.lastSyncedAt ? (
           <p className="text-muted-foreground text-xs">
-            Last synced {m.lastSyncedAt.toLocaleString("en-ZA")}
+            Last synced {bho.lastSyncedAt.toLocaleString("en-ZA")}
           </p>
         ) : null}
       </div>
@@ -66,66 +66,164 @@ export default async function DashboardPage() {
             <CardTitle>No data yet</CardTitle>
           </CardHeader>
           <CardContent className="text-muted-foreground text-sm">
-            Run <code className="bg-muted rounded px-1 py-0.5">npm run gaap:backfill</code>{" "}
-            to load the last 12 months from GAAP, then refresh.
+            Run <code className="bg-muted rounded px-1 py-0.5">npm run gaap:backfill</code> to load
+            history from GAAP, then refresh.
           </CardContent>
         </Card>
       ) : (
         <>
-          {/* KPI row */}
+          {/* Group KPI row */}
           <div className="grid grid-cols-2 gap-4 lg:grid-cols-3 xl:grid-cols-6">
-            <Stat label="Turnover (excl. VAT)" value={fmtZAR(m.totals.turnoverExcl)} />
-            <Stat label="Average spend" value={fmtZAR2(m.totals.avgSpend)} sub="per transaction" />
+            <Stat label="Group turnover (excl. VAT)" value={fmtZAR(bho.totals.turnoverExcl)} />
+            <Stat label="Average spend" value={fmtZAR2(bho.totals.avgSpend)} sub="per transaction" />
             <Stat
               label="Gross profit"
-              value={fmtZAR(m.totals.grossProfit)}
-              sub={`${fmtPct(m.totals.gpPct)} margin`}
+              value={fmtZAR(bho.totals.grossProfit)}
+              sub={`${fmtPct(bho.totals.gpPct)} margin`}
             />
-            <Stat label="Transactions" value={fmtNum(m.totals.transactions)} />
-            <Stat label="Voids" value={fmtZAR(m.totals.voids)} />
-            <Stat label="Wastage" value={fmtZAR(Math.abs(m.totals.wastage))} />
+            <Stat label="Transactions" value={fmtNum(bho.totals.transactions)} />
+            <Stat label="Stores" value={fmtNum(bho.storeCount)} />
+            <Stat label="Voids" value={fmtZAR(bho.totals.voids)} />
           </div>
 
-          {/* Trends */}
+          {/* Group trends */}
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
             <Card>
               <CardHeader>
-                <CardTitle className="text-base">Monthly turnover (excl. VAT)</CardTitle>
+                <CardTitle className="text-base">Group monthly turnover (excl. VAT)</CardTitle>
               </CardHeader>
               <CardContent>
-                <RevenueTrendChart data={m.monthly} />
+                <RevenueTrendChart data={bho.monthly} />
               </CardContent>
             </Card>
             <Card>
               <CardHeader>
-                <CardTitle className="text-base">Average spend per transaction</CardTitle>
+                <CardTitle className="text-base">Group average spend per transaction</CardTitle>
               </CardHeader>
               <CardContent>
-                <AvgSpendTrendChart data={m.monthly} />
+                <AvgSpendTrendChart data={bho.monthly} />
               </CardContent>
             </Card>
           </div>
 
-          {/* Mix */}
+          {/* By operations manager */}
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
             <Card className="lg:col-span-2">
               <CardHeader>
-                <CardTitle className="text-base">Sales by department</CardTitle>
+                <CardTitle className="text-base">Turnover by operations manager</CardTitle>
               </CardHeader>
               <CardContent>
-                <DepartmentBarChart data={topDepartments} />
+                <DepartmentBarChart data={managerChart} />
               </CardContent>
             </Card>
             <Card>
               <CardHeader>
-                <CardTitle className="text-base">Sales by channel</CardTitle>
+                <CardTitle className="text-base">Manager summary</CardTitle>
               </CardHeader>
-              <CardContent className="flex flex-col gap-4">
-                <ChannelPieChart data={m.channels} />
-                <ChannelLegend data={m.channels} />
+              <CardContent className="space-y-3 text-sm">
+                {bho.managers.map((m) => (
+                  <div key={m.manager} className="flex items-center justify-between">
+                    <div>
+                      <div className="font-medium">{m.manager}</div>
+                      <div className="text-muted-foreground text-xs">
+                        {m.storeCount} stores · {fmtPct(m.gpPct)} GP
+                      </div>
+                    </div>
+                    <div className="text-right tabular-nums">
+                      <div>{fmtZAR(m.turnoverExcl)}</div>
+                      <div className="text-muted-foreground text-xs">
+                        {fmtZAR2(m.avgSpend)} avg
+                      </div>
+                    </div>
+                  </div>
+                ))}
               </CardContent>
             </Card>
           </div>
+
+          {/* Store leaderboard, grouped by manager — click to drill into a store */}
+          {MANAGERS.map((mgr) => {
+            const stores = bho.stores.filter((s) => s.manager === mgr);
+            return (
+              <Card key={mgr}>
+                <CardHeader>
+                  <CardTitle className="text-base">{mgr}&rsquo;s stores</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Store</TableHead>
+                          <TableHead className="text-right">Turnover (excl)</TableHead>
+                          <TableHead className="text-right">Transactions</TableHead>
+                          <TableHead className="text-right">Avg spend</TableHead>
+                          <TableHead className="text-right">GP %</TableHead>
+                          <TableHead></TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {stores.map((s) => (
+                          <TableRow key={s.node} className="group">
+                            <TableCell className="font-medium">
+                              <Link
+                                href={`/dashboard/${s.node}`}
+                                className="hover:text-brand inline-flex items-center gap-2"
+                              >
+                                {s.name}
+                                {!s.hasData ? (
+                                  <Badge variant="outline" className="text-xs">
+                                    no data
+                                  </Badge>
+                                ) : null}
+                              </Link>
+                            </TableCell>
+                            <TableCell className="text-right tabular-nums">
+                              {fmtZAR(s.turnoverExcl)}
+                            </TableCell>
+                            <TableCell className="text-right tabular-nums">
+                              {fmtNum(s.transactions)}
+                            </TableCell>
+                            <TableCell className="text-right tabular-nums">
+                              {fmtZAR2(s.avgSpend)}
+                            </TableCell>
+                            <TableCell className="text-right tabular-nums">
+                              {fmtPct(s.gpPct)}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <Link
+                                href={`/dashboard/${s.node}`}
+                                className="text-muted-foreground hover:text-foreground inline-flex"
+                                aria-label={`Open ${s.name}`}
+                              >
+                                <ChevronRight className="h-4 w-4" />
+                              </Link>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
+
+          {BHO_STORES_NO_DATA.length > 0 ? (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Awaiting data source</CardTitle>
+              </CardHeader>
+              <CardContent className="text-muted-foreground space-y-1 text-sm">
+                {BHO_STORES_NO_DATA.map((s) => (
+                  <div key={s.name}>
+                    <span className="text-foreground font-medium">{s.name}</span> ({s.manager}) —{" "}
+                    {s.reason}
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          ) : null}
         </>
       )}
     </div>

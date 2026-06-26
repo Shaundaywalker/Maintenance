@@ -162,8 +162,14 @@ function aggregateChunk(
     // "Turnover Excl" = TaxExcl − Nonturnover on Canal Walk):
     //   non_banking    = Σ(unique TRANSACTIONTOTAL per doc) − API TURNOVER
     //   turnover_excl  = Σ(LINETOTAL) − Σ(LINETAX) − non_banking
-    const nonBanking = sumTransactionTotals - day.turnover;
-    const turnoverExcl = sumLineTotal - sumLineTax - nonBanking;
+    //
+    // When the daily summary didn't post (API TURNOVER = 0) but sales lines
+    // exist, the non-banking term is meaningless (it would subtract the whole
+    // day) — fall back to the plain ex-VAT line total, which equals the RM REST
+    // "TaxExcl" basis.
+    const exVatLineTotal = sumLineTotal - sumLineTax;
+    const nonBanking = day.turnover > 0 ? sumTransactionTotals - day.turnover : 0;
+    const turnoverExcl = exVatLineTotal - nonBanking;
 
     day.transactionCount = transactionCount;
     day.turnoverExcl = turnoverExcl;
