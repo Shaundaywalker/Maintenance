@@ -63,9 +63,15 @@ export interface SalesLineRow {
   NODE: string;
   REPORTDATE: string;
   DOCUMENTNR: string;
+  ITEMINDEX?: number | string;
+  ITEMCODE?: string;
+  DEPARTMENTCODE?: string;
   DEPARTMENTNAME?: string;
+  TRANSACTIONTIME?: string;
+  QTY?: number;
   LINETOTAL?: number;
   LINETAX?: number;
+  LINECOST?: number;
   TRANSACTIONTOTAL?: number;
   TRANSMODE?: string;
 }

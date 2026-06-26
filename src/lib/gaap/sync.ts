@@ -96,16 +96,32 @@ function aggregateChunk(
     day.storeName = (r.STORE ?? day.storeName ?? "")?.trim() || null;
     day.turnover = r.TURNOVER ?? 0;
     day.costOfSales = r.COSTOFSALES ?? 0;
-    day.grossProfit = r.GROSSPROFIT ?? r.GP ?? 0;
     day.voids = r.VOIDS ?? 0;
     day.wastage = r.WASTAGE ?? 0;
     day.shrinkage = r.SHRINKAGE ?? 0;
     byDate.set(date, day);
   }
 
-  // Group sales lines by date.
+  // Group sales lines by date — DE-DUPLICATING as we go. The Legacy API returns
+  // every sales line exactly twice (same wholesale duplication seen in
+  // /dailysummary); summing the raw lines would double turnover. We dedup on a
+  // full line identity so only true exact-copy rows are dropped.
   const linesByDate = new Map<string, SalesLineRow[]>();
+  const seenLine = new Set<string>();
   for (const l of lines) {
+    const key = [
+      l.DOCUMENTNR,
+      l.ITEMINDEX,
+      l.ITEMCODE,
+      l.QTY,
+      l.LINETOTAL,
+      l.LINETAX,
+      l.LINECOST,
+      l.TRANSACTIONTIME,
+      l.DEPARTMENTCODE,
+    ].join("|");
+    if (seenLine.has(key)) continue;
+    seenLine.add(key);
     const date = isoDate(l.REPORTDATE);
     const arr = linesByDate.get(date) ?? [];
     arr.push(l);
@@ -116,45 +132,48 @@ function aggregateChunk(
     const day = byDate.get(date) ?? blank(date);
 
     const docTotals = new Map<string, number>(); // DOCUMENTNR -> TRANSACTIONTOTAL
-    let sumLineTotal = 0;
+    let sumLineTotal = 0; // VAT-inclusive
     let sumLineTax = 0;
+    // Breakdowns are accumulated EX-VAT (lineTotal - lineTax) so they sum to
+    // the ex-VAT sales figure, consistent with every other number on the dash.
     const channel: Record<string, number> = {};
     const dept: Record<string, number> = {};
 
     for (const l of dayLines) {
       const lineTotal = l.LINETOTAL ?? 0;
+      const lineTax = l.LINETAX ?? 0;
+      const exVat = lineTotal - lineTax;
       sumLineTotal += lineTotal;
-      sumLineTax += l.LINETAX ?? 0;
+      sumLineTax += lineTax;
 
       if (l.DOCUMENTNR && !docTotals.has(l.DOCUMENTNR)) {
         docTotals.set(l.DOCUMENTNR, l.TRANSACTIONTOTAL ?? 0);
       }
       const mode = (l.TRANSMODE ?? "").trim() || "Unknown";
-      channel[mode] = (channel[mode] ?? 0) + lineTotal;
+      channel[mode] = (channel[mode] ?? 0) + exVat;
       const dname = (l.DEPARTMENTNAME ?? "").trim() || "Unknown";
-      dept[dname] = (dept[dname] ?? 0) + lineTotal;
+      dept[dname] = (dept[dname] ?? 0) + exVat;
     }
 
     const transactionCount = docTotals.size;
     const sumTransactionTotals = [...docTotals.values()].reduce((a, b) => a + b, 0);
 
-    // §3.4 turnover correction: strip tips + non-banking, then remove tax.
+    // §3.4 turnover correction (verified to reconcile exactly with the RM REST
+    // "Turnover Excl" = TaxExcl − Nonturnover on Canal Walk):
+    //   non_banking    = Σ(unique TRANSACTIONTOTAL per doc) − API TURNOVER
+    //   turnover_excl  = Σ(LINETOTAL) − Σ(LINETAX) − non_banking
     const nonBanking = sumTransactionTotals - day.turnover;
     const turnoverExcl = sumLineTotal - sumLineTax - nonBanking;
 
     day.transactionCount = transactionCount;
     day.turnoverExcl = turnoverExcl;
-    day.avgSpend = transactionCount > 0 ? sumLineTotal / transactionCount : 0;
+    // Gross profit on the corrected (ex-VAT) turnover, per §3.4.
+    day.grossProfit = turnoverExcl - day.costOfSales;
+    // Average spend per transaction, EX-VAT.
+    day.avgSpend = transactionCount > 0 ? turnoverExcl / transactionCount : 0;
     day.channelBreakdown = channel;
     day.departmentBreakdown = dept;
     byDate.set(date, day);
-  }
-
-  // Days with a summary but no sales lines: fall back turnoverExcl -> turnover.
-  for (const day of byDate.values()) {
-    if (day.transactionCount === 0 && day.turnoverExcl === 0) {
-      day.turnoverExcl = day.turnover;
-    }
   }
 
   return byDate;
