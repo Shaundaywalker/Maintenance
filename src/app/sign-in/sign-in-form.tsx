@@ -22,9 +22,24 @@ export function SignInForm({
 }) {
   const router = useRouter();
   const [step, setStep] = useState<Step>("email");
+  const [mode, setMode] = useState<"otp" | "password">("otp");
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
+  const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+
+  async function onPasswordSignIn(e: React.FormEvent) {
+    e.preventDefault();
+    setLoading(true);
+    const { error } = await authClient.signIn.email({ email, password });
+    setLoading(false);
+    if (error) {
+      toast.error("Wrong email or password.");
+      return;
+    }
+    router.push("/dashboard");
+    router.refresh();
+  }
 
   async function onRequestCode(e: React.FormEvent) {
     e.preventDefault();
@@ -61,7 +76,45 @@ export function SignInForm({
 
   return (
     <div className="flex flex-col gap-6">
-      {step === "email" ? (
+      {mode === "password" ? (
+        <form onSubmit={onPasswordSignIn} className="flex flex-col gap-4">
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="pw-email">Work email</Label>
+            <Input
+              id="pw-email"
+              type="email"
+              autoComplete="email"
+              placeholder="you@bootlegger.co.za"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+              autoFocus
+            />
+          </div>
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="pw-password">Password</Label>
+            <Input
+              id="pw-password"
+              type="password"
+              autoComplete="current-password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+            />
+          </div>
+          <Button type="submit" disabled={loading || !email || !password}>
+            {loading && <Loader2 className="animate-spin" />}
+            Sign in
+          </Button>
+          <button
+            type="button"
+            className="text-muted-foreground text-sm underline underline-offset-2"
+            onClick={() => setMode("otp")}
+          >
+            Email me a code instead
+          </button>
+        </form>
+      ) : step === "email" ? (
         <form onSubmit={onRequestCode} className="flex flex-col gap-4">
           <div className="flex flex-col gap-2">
             <Label htmlFor="email">Work email</Label>
@@ -80,6 +133,13 @@ export function SignInForm({
             {loading && <Loader2 className="animate-spin" />}
             Email me a sign-in code
           </Button>
+          <button
+            type="button"
+            className="text-muted-foreground text-sm underline underline-offset-2"
+            onClick={() => setMode("password")}
+          >
+            Sign in with a password instead
+          </button>
         </form>
       ) : (
         <form onSubmit={onVerify} className="flex flex-col gap-4">
@@ -119,7 +179,7 @@ export function SignInForm({
         </form>
       )}
 
-      {microsoftEnabled && step === "email" && (
+      {microsoftEnabled && mode === "otp" && step === "email" && (
         <>
           <div className="flex items-center gap-3">
             <div className="bg-border h-px flex-1" />

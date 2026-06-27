@@ -1,8 +1,10 @@
 "use server";
 
-import { randomUUID } from "node:crypto";
+import { randomUUID, randomBytes } from "node:crypto";
+import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { eq } from "drizzle-orm";
+import { auth } from "@/lib/auth";
 import { db } from "@/db";
 import {
   invitedUser,
@@ -97,6 +99,92 @@ export async function addUser(
   }
 
   return { ok: true };
+}
+
+/**
+ * Create (or reset) a password login for someone and return the generated
+ * password ONCE so the admin can share it. Works without email — the answer to
+ * "I want to hand someone a login directly". The invite + domain gate still
+ * applies (we add the invite row first so user creation passes the gate).
+ */
+export type CreateLoginResult = ActionResult & {
+  email?: string;
+  password?: string;
+  url?: string;
+};
+
+function generatePassword(): string {
+  // 12 url-safe chars — strong, and easy enough to copy/paste once.
+  return randomBytes(9).toString("base64url");
+}
+
+export async function createLogin(
+  emailInput: string,
+  role: "admin" | "member",
+): Promise<CreateLoginResult> {
+  const admin = await requireAdmin();
+  const email = normalizeEmail(emailInput);
+
+  if (!isValidEmail(email)) {
+    return { ok: false, error: "Enter a valid email address." };
+  }
+  if (!(await isDomainAllowed(email))) {
+    return {
+      ok: false,
+      error: `@${emailDomain(email)} isn't an allowed domain yet — add it under Domains first.`,
+    };
+  }
+
+  // Ensure an enabled invite exists so user creation passes the access gate.
+  const invite = await db.query.invitedUser.findFirst({
+    where: eq(invitedUser.email, email),
+  });
+  if (!invite) {
+    await db.insert(invitedUser).values({
+      id: randomUUID(),
+      email,
+      role,
+      enabled: true,
+      invitedByEmail: admin.email,
+    });
+  }
+
+  const password = generatePassword();
+  const h = await headers();
+
+  try {
+    const existingUser = await db.query.user.findFirst({
+      where: eq(userTable.email, email),
+    });
+    if (existingUser) {
+      // Reset the existing account's password.
+      await auth.api.setUserPassword({
+        body: { userId: existingUser.id, newPassword: password },
+        headers: h,
+      });
+    } else {
+      // Role is stamped from the invite by the user.create.before hook, so we
+      // don't pass it here (the admin API types it as user|admin, not member).
+      await auth.api.createUser({
+        body: { email, password, name: email.split("@")[0] },
+        headers: h,
+      });
+    }
+  } catch (err) {
+    console.error("[settings] createLogin failed:", err);
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : "Couldn't create the login.",
+    };
+  }
+
+  revalidatePath("/settings/users");
+  return {
+    ok: true,
+    email,
+    password,
+    url: process.env.BETTER_AUTH_URL ?? "",
+  };
 }
 
 export async function setUserRole(

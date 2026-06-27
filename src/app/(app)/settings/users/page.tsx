@@ -3,6 +3,7 @@ import { requireAdmin } from "@/lib/session";
 import { db } from "@/db";
 import { invitedUser, user as userTable } from "@/db/schema";
 import { AddUserDialog } from "./add-user-dialog";
+import { CreateLoginDialog } from "./create-login-dialog";
 import { UsersTable, type UserRow } from "./users-table";
 
 export default async function UsersPage() {
@@ -28,7 +29,10 @@ export default async function UsersPage() {
         <p className="text-muted-foreground text-sm">
           {rows.length} {rows.length === 1 ? "person" : "people"} with access
         </p>
-        <AddUserDialog />
+        <div className="flex items-center gap-2">
+          <CreateLoginDialog />
+          <AddUserDialog />
+        </div>
       </div>
       <UsersTable rows={rows} currentEmail={me.email} />
     </div>

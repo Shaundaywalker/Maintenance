@@ -17,6 +17,14 @@ export const auth = betterAuth({
   // BETTER_AUTH_SECRET and BETTER_AUTH_URL are read from the environment.
   database: drizzleAdapter(db, { provider: "sqlite", schema }),
 
+  // Email + password sign-in. Admins create a login with a generated password
+  // (Settings → Create login) and share it — useful when email delivery is down.
+  // The same invite + domain gate applies via the user.create.before hook below.
+  emailAndPassword: {
+    enabled: true,
+    minPasswordLength: 8,
+  },
+
   socialProviders: microsoftConfigured
     ? {
         microsoft: {
