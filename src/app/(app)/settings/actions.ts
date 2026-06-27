@@ -12,8 +12,9 @@ import {
 } from "@/db/schema";
 import { requireAdmin } from "@/lib/session";
 import { emailDomain, isDomainAllowed, normalizeEmail } from "@/lib/access";
+import { sendInviteEmail } from "@/lib/email";
 
-export type ActionResult = { ok: boolean; error?: string };
+export type ActionResult = { ok: boolean; error?: string; warning?: string };
 
 function isValidEmail(email: string): boolean {
   return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email);
@@ -79,6 +80,22 @@ export async function addUser(
   });
 
   revalidatePath("/settings/users");
+
+  // Email the invite. The user is added regardless; surface a warning if the
+  // email couldn't be sent so the admin knows to share the link manually.
+  try {
+    const sent = await sendInviteEmail(email, { invitedBy: admin.email });
+    if (!sent) {
+      return { ok: true, warning: "User added, but email isn't configured — share the sign-in link manually." };
+    }
+  } catch (err) {
+    console.error("[settings] invite email failed:", err);
+    return {
+      ok: true,
+      warning: "User added, but the invite email failed to send (check email settings).",
+    };
+  }
+
   return { ok: true };
 }
 

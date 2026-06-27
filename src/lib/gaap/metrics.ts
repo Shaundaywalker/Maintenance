@@ -1,5 +1,5 @@
 import "server-only";
-import { and, eq, gte, lte, asc, inArray } from "drizzle-orm";
+import { and, eq, gte, lte, asc, desc, inArray } from "drizzle-orm";
 import { db } from "@/db";
 import { gaapDailyMetrics, type GaapDailyMetrics } from "@/db/schema";
 import { GAAP_STORE_NODE } from "./config";
@@ -61,6 +61,22 @@ function parseMap(json: string | null): Record<string, number> {
 /** Default window: from the fixed BHO history start up to today. */
 export function defaultWindow(): { start: string; end: string } {
   return { start: BHO_START_DATE, end: new Date().toISOString().slice(0, 10) };
+}
+
+/**
+ * The most recent date that has data — i.e. "yesterday" once the nightly sync
+ * has run. Used as the default landing day so the dashboard never shows an empty
+ * "today". Pass a node for a single store, omit for the whole estate.
+ */
+export async function latestDataDate(node?: string): Promise<string | null> {
+  const nodes = node ? [node] : BHO_STORES.map((s) => s.node);
+  const row = await db
+    .select({ date: gaapDailyMetrics.date })
+    .from(gaapDailyMetrics)
+    .where(inArray(gaapDailyMetrics.node, nodes))
+    .orderBy(desc(gaapDailyMetrics.date))
+    .limit(1);
+  return row[0]?.date ?? null;
 }
 
 export async function getMetrics(

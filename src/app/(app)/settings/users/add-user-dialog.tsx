@@ -34,7 +34,11 @@ export function AddUserDialog() {
         toast.error(res.error ?? "Couldn't add the user.");
         return;
       }
-      toast.success(`Added ${email}`);
+      if (res.warning) {
+        toast.warning(res.warning);
+      } else {
+        toast.success(`Added ${email} — invite emailed`);
+      }
       setEmail("");
       setRole("member");
       setOpen(false);
@@ -55,8 +59,8 @@ export function AddUserDialog() {
           <DialogHeader>
             <DialogTitle>Add a user</DialogTitle>
             <DialogDescription>
-              They&apos;ll sign in with a one-time email code. Their email domain
-              must be on the allowed list.
+              They&apos;ll get an email inviting them to sign in (with a one-time
+              code). Their email domain must be on the allowed list.
             </DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-4 py-4">

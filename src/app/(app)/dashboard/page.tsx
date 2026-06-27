@@ -14,6 +14,7 @@ import {
 import {
   getBhoOverview,
   defaultWindow,
+  latestDataDate,
   type GroupSummary,
   type Growth,
 } from "@/lib/gaap/metrics";
@@ -132,10 +133,24 @@ function GrowthCard({
   );
 }
 
+function fmtDay(d: string): string {
+  return new Date(d + "T00:00:00Z").toLocaleDateString("en-ZA", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+}
+
 export default async function DashboardPage() {
   await requireUser();
   const { start, end } = defaultWindow();
+  // Full history powers the trends, growth and breakdowns.
   const bho = await getBhoOverview(start, end);
+  // The landing headline + store list default to the latest day with data
+  // ("yesterday" once the nightly sync has run).
+  const day = (await latestDataDate()) ?? end;
+  const today = await getBhoOverview(day, day);
 
   const hasData = bho.totals.transactions > 0;
   const gr = bho.growth;
@@ -156,7 +171,7 @@ export default async function DashboardPage() {
             BHO — Bootlegger Head Office
           </h1>
           <p className="text-muted-foreground mt-2">
-            Group consolidated · {bho.storeCount} stores · {start} → {end}
+            Group consolidated · {bho.storeCount} stores
           </p>
         </div>
         {bho.lastSyncedAt ? (
@@ -178,19 +193,31 @@ export default async function DashboardPage() {
         </Card>
       ) : (
         <>
-          {/* Group KPI row */}
+          {/* Yesterday headline */}
+          <div className="flex items-baseline gap-2">
+            <h2 className="text-lg font-semibold tracking-tight">Yesterday</h2>
+            <span className="text-muted-foreground text-sm">{fmtDay(day)}</span>
+          </div>
           <div className="grid grid-cols-2 gap-4 lg:grid-cols-4 xl:grid-cols-7">
-            <Stat label="Group turnover (excl. VAT)" value={fmtZAR(bho.totals.turnoverExcl)} />
-            <Stat label="Average spend" value={fmtZAR2(bho.totals.avgSpend)} sub="per transaction" />
+            <Stat label="Group turnover (excl. VAT)" value={fmtZAR(today.totals.turnoverExcl)} />
+            <Stat label="SPI" value={fmtZAR2(today.totals.avgSpend)} sub="sales per invoice" />
             <Stat
               label="Gross profit"
-              value={fmtZAR(bho.totals.grossProfit)}
-              sub={`${fmtPct(bho.totals.gpPct)} margin`}
+              value={fmtZAR(today.totals.grossProfit)}
+              sub={`${fmtPct(today.totals.gpPct)} margin`}
             />
-            <Stat label="Transactions" value={fmtNum(bho.totals.transactions)} />
+            <Stat label="Invoices" value={fmtNum(today.totals.transactions)} />
             <Stat label="Stores" value={fmtNum(bho.storeCount)} />
-            <Stat label="Wastage" value={fmtZAR(Math.abs(bho.totals.wastage))} />
-            <Stat label="Stock variance" value={fmtZAR(bho.totals.stockVariance)} />
+            <Stat label="Wastage" value={fmtZAR(Math.abs(today.totals.wastage))} />
+            <Stat label="Stock variance" value={fmtZAR(today.totals.stockVariance)} />
+          </div>
+
+          {/* Historical context — full window since the data start */}
+          <div className="mt-2 flex items-baseline gap-2 border-t pt-4">
+            <h2 className="text-lg font-semibold tracking-tight">Trends &amp; mix</h2>
+            <span className="text-muted-foreground text-sm">
+              since {start} (date filters coming next)
+            </span>
           </div>
 
           {/* Store-type split (All Day Café vs XS) */}

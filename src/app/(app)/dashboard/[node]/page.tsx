@@ -12,7 +12,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { getMetrics, defaultWindow, storeName } from "@/lib/gaap/metrics";
+import { getMetrics, defaultWindow, latestDataDate, storeName } from "@/lib/gaap/metrics";
 import { storeByNode } from "@/lib/gaap/stores";
 import { fmtMonth, fmtNum, fmtPct, fmtZAR, fmtZAR2 } from "@/lib/format";
 import {
@@ -48,11 +48,20 @@ export default async function StorePage({
   if (!cfg) notFound();
 
   const { start, end } = defaultWindow();
-  const m = await getMetrics(start, end, node);
+  const m = await getMetrics(start, end, node); // full history → trends, month table, mix
+  const day = (await latestDataDate(node)) ?? end;
+  const today = await getMetrics(day, day, node); // yesterday → headline
   const name = storeName(node, m.storeName);
   const topDepartments = m.departments.slice(0, 8);
   // Most recent month first in the table.
   const monthsDesc = [...m.monthly].reverse();
+  const fmtDay = (d: string) =>
+    new Date(d + "T00:00:00Z").toLocaleDateString("en-ZA", {
+      weekday: "short",
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    });
 
   return (
     <div className="flex flex-col gap-6">
@@ -74,20 +83,29 @@ export default async function StorePage({
             </div>
           </div>
           <p className="text-muted-foreground text-xs">
-            {start} → {end}
-            {m.lastSyncedAt ? ` · synced ${m.lastSyncedAt.toLocaleDateString("en-ZA")}` : ""}
+            {m.lastSyncedAt ? `Synced ${m.lastSyncedAt.toLocaleDateString("en-ZA")}` : ""}
           </p>
         </div>
       </div>
 
-      {/* KPI row */}
+      {/* Yesterday headline */}
+      <div className="flex items-baseline gap-2">
+        <h2 className="text-lg font-semibold tracking-tight">Yesterday</h2>
+        <span className="text-muted-foreground text-sm">{fmtDay(day)}</span>
+      </div>
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-3 xl:grid-cols-6">
-        <Stat label="Turnover (excl. VAT)" value={fmtZAR(m.totals.turnoverExcl)} />
-        <Stat label="Average spend" value={fmtZAR2(m.totals.avgSpend)} sub="per transaction" />
-        <Stat label="Gross profit" value={fmtZAR(m.totals.grossProfit)} sub={`${fmtPct(m.totals.gpPct)} margin`} />
-        <Stat label="Transactions" value={fmtNum(m.totals.transactions)} />
-        <Stat label="Wastage" value={fmtZAR(Math.abs(m.totals.wastage))} />
-        <Stat label="Stock variance" value={fmtZAR(m.totals.stockVariance)} />
+        <Stat label="Turnover (excl. VAT)" value={fmtZAR(today.totals.turnoverExcl)} />
+        <Stat label="SPI" value={fmtZAR2(today.totals.avgSpend)} sub="sales per invoice" />
+        <Stat label="Gross profit" value={fmtZAR(today.totals.grossProfit)} sub={`${fmtPct(today.totals.gpPct)} margin`} />
+        <Stat label="Invoices" value={fmtNum(today.totals.transactions)} />
+        <Stat label="Wastage" value={fmtZAR(Math.abs(today.totals.wastage))} />
+        <Stat label="Stock variance" value={fmtZAR(today.totals.stockVariance)} />
+      </div>
+
+      {/* Historical context */}
+      <div className="mt-2 flex items-baseline gap-2 border-t pt-4">
+        <h2 className="text-lg font-semibold tracking-tight">Trends &amp; month-by-month</h2>
+        <span className="text-muted-foreground text-sm">since {start}</span>
       </div>
 
       {/* Trends */}
