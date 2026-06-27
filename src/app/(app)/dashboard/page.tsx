@@ -84,11 +84,14 @@ function growthTone(p: number | null): string {
 
 function GrowthPair({ g }: { g: Growth }) {
   return (
-    <span className="text-xs whitespace-nowrap">
-      <span className={growthTone(g.momPct)}>MoM {fmtGrowth(g.momPct)}</span>
-      <span className="text-muted-foreground"> · </span>
-      <span className={growthTone(g.yoyPct)}>YoY {fmtGrowth(g.yoyPct)}</span>
-    </span>
+    <div className="text-xs leading-tight">
+      <span className={`${growthTone(g.momPct)} whitespace-nowrap`}>
+        MoM {fmtGrowth(g.momPct)}
+      </span>{" "}
+      <span className={`${growthTone(g.yoyPct)} whitespace-nowrap`}>
+        YoY {fmtGrowth(g.yoyPct)}
+      </span>
+    </div>
   );
 }
 
@@ -111,14 +114,17 @@ function GrowthCard({
         <CardTitle className="text-base">{title}</CardTitle>
         {sub ? <p className="text-muted-foreground text-xs">{sub}</p> : null}
       </CardHeader>
-      <CardContent className="space-y-2 text-sm">
+      <CardContent className="space-y-3 text-sm">
         {rows.map((r) => (
-          <div key={r.label} className="flex items-center justify-between gap-3">
-            <span className="text-muted-foreground w-28 shrink-0">{r.label}</span>
-            <span className="flex-1 text-right font-medium tabular-nums">{fmt(r.g.value)}</span>
-            <span className="w-40 text-right">
+          <div
+            key={r.label}
+            className="flex items-start justify-between gap-3 border-b pb-3 last:border-0 last:pb-0"
+          >
+            <span className="text-muted-foreground min-w-0 shrink truncate">{r.label}</span>
+            <div className="text-right">
+              <div className="font-medium tabular-nums">{fmt(r.g.value)}</div>
               <GrowthPair g={r.g} />
-            </span>
+            </div>
           </div>
         ))}
       </CardContent>
