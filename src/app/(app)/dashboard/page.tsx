@@ -11,9 +11,14 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { getBhoOverview, defaultWindow, type GroupSummary } from "@/lib/gaap/metrics";
+import {
+  getBhoOverview,
+  defaultWindow,
+  type GroupSummary,
+  type Growth,
+} from "@/lib/gaap/metrics";
 import { BHO_STORES_NO_DATA, MANAGERS } from "@/lib/gaap/stores";
-import { fmtNum, fmtPct, fmtZAR, fmtZAR2 } from "@/lib/format";
+import { fmtGrowth, fmtMonth, fmtNum, fmtPct, fmtZAR, fmtZAR2 } from "@/lib/format";
 import {
   AvgSpendTrendChart,
   DepartmentBarChart,
@@ -72,12 +77,70 @@ function GroupBreakdown({ title, groups }: { title: string; groups: GroupSummary
   );
 }
 
+function growthTone(p: number | null): string {
+  if (p === null || !isFinite(p)) return "text-muted-foreground";
+  return p > 0 ? "text-emerald-600" : p < 0 ? "text-red-600" : "text-muted-foreground";
+}
+
+function GrowthPair({ g }: { g: Growth }) {
+  return (
+    <span className="text-xs whitespace-nowrap">
+      <span className={growthTone(g.momPct)}>MoM {fmtGrowth(g.momPct)}</span>
+      <span className="text-muted-foreground"> · </span>
+      <span className={growthTone(g.yoyPct)}>YoY {fmtGrowth(g.yoyPct)}</span>
+    </span>
+  );
+}
+
+/** A metric card with one row per bucket (store type + group), each showing the
+ *  value plus month-on-month and year-on-year growth. */
+function GrowthCard({
+  title,
+  sub,
+  fmt,
+  rows,
+}: {
+  title: string;
+  sub?: string;
+  fmt: (n: number) => string;
+  rows: Array<{ label: string; g: Growth }>;
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">{title}</CardTitle>
+        {sub ? <p className="text-muted-foreground text-xs">{sub}</p> : null}
+      </CardHeader>
+      <CardContent className="space-y-2 text-sm">
+        {rows.map((r) => (
+          <div key={r.label} className="flex items-center justify-between gap-3">
+            <span className="text-muted-foreground w-28 shrink-0">{r.label}</span>
+            <span className="flex-1 text-right font-medium tabular-nums">{fmt(r.g.value)}</span>
+            <span className="w-40 text-right">
+              <GrowthPair g={r.g} />
+            </span>
+          </div>
+        ))}
+      </CardContent>
+    </Card>
+  );
+}
+
 export default async function DashboardPage() {
   await requireUser();
   const { start, end } = defaultWindow();
   const bho = await getBhoOverview(start, end);
 
   const hasData = bho.totals.transactions > 0;
+  const gr = bho.growth;
+  const adc = gr.byType.find((t) => t.type === "All Day Café")?.metric;
+  const xs = gr.byType.find((t) => t.type === "XS")?.metric;
+  const growthRows = (pick: (m: NonNullable<typeof adc>) => Growth) =>
+    [
+      adc ? { label: "All Day Café", g: pick(adc) } : null,
+      xs ? { label: "XS", g: pick(xs) } : null,
+      { label: "Group", g: pick(gr.group) },
+    ].filter((r): r is { label: string; g: Growth } => r !== null);
 
   return (
     <div className="flex flex-col gap-6">
@@ -126,6 +189,41 @@ export default async function DashboardPage() {
 
           {/* Store-type split (All Day Café vs XS) */}
           <GroupBreakdown title="Turnover by store type" groups={bho.types} />
+
+          {/* Growth — latest complete month, MoM + YoY, split by store type */}
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-wrap items-baseline gap-2">
+              <h2 className="text-lg font-semibold tracking-tight">
+                Growth — {fmtMonth(gr.anchorMonth)}
+              </h2>
+              <span className="text-muted-foreground text-sm">
+                month-on-month &amp; year-on-year, by store type
+              </span>
+            </div>
+            {!gr.yoyAvailable ? (
+              <p className="text-muted-foreground text-xs">
+                Year-on-year appears once a matching prior-year month is in range.
+              </p>
+            ) : null}
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+              <GrowthCard
+                title="Revenue (excl. VAT)"
+                fmt={fmtZAR}
+                rows={growthRows((m) => m.revenue)}
+              />
+              <GrowthCard
+                title="SPI"
+                sub="Sales per invoice (excl. VAT)"
+                fmt={fmtZAR2}
+                rows={growthRows((m) => m.spi)}
+              />
+              <GrowthCard
+                title="No. of invoices"
+                fmt={fmtNum}
+                rows={growthRows((m) => m.invoices)}
+              />
+            </div>
+          </div>
 
           {/* Group trends */}
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">

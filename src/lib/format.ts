@@ -32,6 +32,13 @@ export function fmtPct(n: number): string {
   return `${(n ?? 0).toFixed(1)}%`;
 }
 
+/** Signed growth: "+12.3%", "−4.1%", or "—" when not comparable. */
+export function fmtGrowth(n: number | null | undefined): string {
+  if (n === null || n === undefined || !isFinite(n)) return "—";
+  const sign = n > 0 ? "+" : n < 0 ? "−" : "";
+  return `${sign}${Math.abs(n).toFixed(1)}%`;
+}
+
 /** Compact rands for chart axes: R1.2m / R45k / R900 */
 export function fmtZARCompact(n: number): string {
   const v = n ?? 0;

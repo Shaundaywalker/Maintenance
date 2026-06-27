@@ -198,6 +198,28 @@ export interface GroupSummary {
   storeCount: number;
 }
 
+/** A single metric for one month with growth vs the prior month and prior year. */
+export interface Growth {
+  value: number;
+  momPct: number | null; // vs previous month
+  yoyPct: number | null; // vs same month last year
+}
+
+export interface GrowthMetric {
+  revenue: Growth; // turnover excl. VAT
+  invoices: Growth; // number of sales invoices
+  spi: Growth; // Sales Per Invoice = revenue / invoices
+}
+
+export interface BhoGrowth {
+  anchorMonth: string; // YYYY-MM — latest complete month
+  prevMonth: string;
+  yoyMonth: string;
+  yoyAvailable: boolean;
+  group: GrowthMetric;
+  byType: Array<{ type: string; metric: GrowthMetric }>;
+}
+
 export interface BhoOverview {
   start: string;
   end: string;
@@ -216,6 +238,76 @@ export interface BhoOverview {
   managers: GroupSummary[];
   types: GroupSummary[];
   stores: StoreSummary[];
+  growth: BhoGrowth;
+}
+
+function shiftMonth(ym: string, delta: number): string {
+  const [y, m] = ym.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1 + delta, 1)).toISOString().slice(0, 7);
+}
+
+function pctChange(cur: number, base: number | undefined): number | null {
+  if (base === undefined || base === 0) return null;
+  return ((cur - base) / base) * 100;
+}
+
+/**
+ * Build month-on-month and year-on-year growth for revenue, invoices and SPI,
+ * for the group as a whole and per store type. Anchored on the latest COMPLETE
+ * calendar month so a partial current month doesn't distort the numbers.
+ */
+function computeGrowth(rows: GaapDailyMetrics[]): BhoGrowth {
+  const typeByNode = new Map(BHO_STORES.map((s) => [s.node, s.format]));
+
+  // bucket -> month -> {te, tx}
+  const buckets = new Map<string, Map<string, { te: number; tx: number }>>();
+  const add = (bucket: string, month: string, te: number, tx: number) => {
+    const b = buckets.get(bucket) ?? new Map();
+    const cur = b.get(month) ?? { te: 0, tx: 0 };
+    cur.te += te;
+    cur.tx += tx;
+    b.set(month, cur);
+    buckets.set(bucket, b);
+  };
+  const allMonths = new Set<string>();
+  for (const r of rows) {
+    const month = r.date.slice(0, 7);
+    allMonths.add(month);
+    add("__group__", month, r.turnoverExcl, r.transactionCount);
+    add(typeByNode.get(r.node) ?? "?", month, r.turnoverExcl, r.transactionCount);
+  }
+
+  const nowMonth = new Date().toISOString().slice(0, 7);
+  const sorted = [...allMonths].sort();
+  const complete = sorted.filter((m) => m < nowMonth);
+  const anchor = complete.length ? complete[complete.length - 1] : sorted[sorted.length - 1] ?? nowMonth;
+  const prev = shiftMonth(anchor, -1);
+  const yoy = shiftMonth(anchor, -12);
+
+  const metricFor = (bucket: string): GrowthMetric => {
+    const b = buckets.get(bucket) ?? new Map();
+    const at = (m: string) => b.get(m);
+    const spi = (m: string) => {
+      const v = at(m);
+      return v && v.tx > 0 ? v.te / v.tx : undefined;
+    };
+    const cur = at(anchor) ?? { te: 0, tx: 0 };
+    const curSpi = cur.tx > 0 ? cur.te / cur.tx : 0;
+    return {
+      revenue: { value: cur.te, momPct: pctChange(cur.te, at(prev)?.te), yoyPct: pctChange(cur.te, at(yoy)?.te) },
+      invoices: { value: cur.tx, momPct: pctChange(cur.tx, at(prev)?.tx), yoyPct: pctChange(cur.tx, at(yoy)?.tx) },
+      spi: { value: curSpi, momPct: pctChange(curSpi, spi(prev)), yoyPct: pctChange(curSpi, spi(yoy)) },
+    };
+  };
+
+  return {
+    anchorMonth: anchor,
+    prevMonth: prev,
+    yoyMonth: yoy,
+    yoyAvailable: allMonths.has(yoy),
+    group: metricFor("__group__"),
+    byType: STORE_TYPES.map((type) => ({ type, metric: metricFor(type) })),
+  };
 }
 
 export async function getBhoOverview(start: string, end: string): Promise<BhoOverview> {
@@ -322,6 +414,7 @@ export async function getBhoOverview(start: string, end: string): Promise<BhoOve
     managers,
     types,
     stores,
+    growth: computeGrowth(rows),
   };
 }
 

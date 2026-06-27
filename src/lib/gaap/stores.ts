@@ -75,10 +75,10 @@ export const STORE_TYPES = ["All Day Café", "XS"] as const;
 export type StoreType = (typeof STORE_TYPES)[number];
 
 /**
- * Fixed history start for the dashboard + backfill. Anchored to 1 June 2025 so
- * month boundaries are clean and year-on-year comparisons line up later.
+ * Fixed history start for the dashboard + backfill. Anchored to 1 March 2025 so
+ * there is a full prior-year baseline for month-on-month and year-on-year growth.
  */
-export const BHO_START_DATE = "2025-06-01";
+export const BHO_START_DATE = "2025-03-01";
 
 export function storeByNode(node: string): StoreConfig | undefined {
   return BHO_STORES.find((s) => s.node === node);

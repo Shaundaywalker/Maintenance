@@ -1,0 +1,35 @@
+name: Daily GAAP sync
+
+# Pulls the last few days of GAAP data into the live dashboard once a day.
+# 02:00 UTC = 04:00 SAST (GMT+2). Light on the API — recent days only, all stores.
+on:
+  schedule:
+    - cron: "0 2 * * *"
+  workflow_dispatch: {} # allow manual runs from the Actions tab
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger sync endpoint
+        env:
+          SYNC_URL: https://shaun-production.up.railway.app/api/sync/gaap
+          SYNC_SECRET: ${{ secrets.GAAP_SYNC_SECRET }}
+        run: |
+          echo "Triggering daily GAAP sync..."
+          code=$(curl -sS -o /tmp/resp.json -w "%{http_code}" --max-time 290 \
+            -X POST "$SYNC_URL" \
+            -H "Content-Type: application/json" \
+            -H "x-sync-secret: $SYNC_SECRET" \
+            -d '{}')
+          echo "HTTP $code"
+          cat /tmp/resp.json
+          echo
+          # The handler keeps running server-side even if the gateway times out,
+          # so treat 2xx as success and anything else as a soft failure to inspect.
+          if [ "$code" -ge 200 ] && [ "$code" -lt 300 ]; then
+            echo "Sync OK"
+          else
+            echo "::warning::Sync returned HTTP $code — check the dashboard / Railway logs"
+            exit 1
+          fi
