@@ -12,7 +12,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { getMetrics, defaultWindow, latestDataDate, storeName } from "@/lib/gaap/metrics";
+import { getMetrics, defaultWindow, anchorDay, storeName } from "@/lib/gaap/metrics";
 import { storeByNode } from "@/lib/gaap/stores";
 import { fmtMonth, fmtNum, fmtPct, fmtZAR, fmtZAR2 } from "@/lib/format";
 import {
@@ -49,7 +49,7 @@ export default async function StorePage({
 
   const { start, end } = defaultWindow();
   const m = await getMetrics(start, end, node); // full history → trends, month table, mix
-  const day = (await latestDataDate(node)) ?? end;
+  const day = await anchorDay(); // same "yesterday" as the group page, so figures reconcile
   const today = await getMetrics(day, day, node); // yesterday → headline
   const name = storeName(node, m.storeName);
   const topDepartments = m.departments.slice(0, 8);

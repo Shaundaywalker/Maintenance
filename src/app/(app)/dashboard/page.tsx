@@ -14,7 +14,7 @@ import {
 import {
   getBhoOverview,
   defaultWindow,
-  latestDataDate,
+  anchorDay,
   type GroupSummary,
   type Growth,
 } from "@/lib/gaap/metrics";
@@ -147,9 +147,9 @@ export default async function DashboardPage() {
   const { start, end } = defaultWindow();
   // Full history powers the trends, growth and breakdowns.
   const bho = await getBhoOverview(start, end);
-  // The landing headline + store list default to the latest day with data
-  // ("yesterday" once the nightly sync has run).
-  const day = (await latestDataDate()) ?? end;
+  // The landing headline, breakdowns and store list all default to the same
+  // "yesterday" date so every figure reconciles with the per-store drilldowns.
+  const day = await anchorDay();
   const today = await getBhoOverview(day, day);
 
   const hasData = bho.totals.transactions > 0;
@@ -212,78 +212,15 @@ export default async function DashboardPage() {
             <Stat label="Stock variance" value={fmtZAR(today.totals.stockVariance)} />
           </div>
 
-          {/* Historical context — full window since the data start */}
-          <div className="mt-2 flex items-baseline gap-2 border-t pt-4">
-            <h2 className="text-lg font-semibold tracking-tight">Trends &amp; mix</h2>
-            <span className="text-muted-foreground text-sm">
-              since {start} (date filters coming next)
-            </span>
-          </div>
+          {/* Yesterday — by store type */}
+          <GroupBreakdown title="Turnover by store type" groups={today.types} />
 
-          {/* Store-type split (All Day Café vs XS) */}
-          <GroupBreakdown title="Turnover by store type" groups={bho.types} />
+          {/* Yesterday — by operations manager */}
+          <GroupBreakdown title="Turnover by operations manager" groups={today.managers} />
 
-          {/* Growth — latest complete month, MoM + YoY, split by store type */}
-          <div className="flex flex-col gap-3">
-            <div className="flex flex-wrap items-baseline gap-2">
-              <h2 className="text-lg font-semibold tracking-tight">
-                Growth — {fmtMonth(gr.anchorMonth)}
-              </h2>
-              <span className="text-muted-foreground text-sm">
-                month-on-month &amp; year-on-year, by store type
-              </span>
-            </div>
-            {!gr.yoyAvailable ? (
-              <p className="text-muted-foreground text-xs">
-                Year-on-year appears once a matching prior-year month is in range.
-              </p>
-            ) : null}
-            <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-              <GrowthCard
-                title="Revenue (excl. VAT)"
-                fmt={fmtZAR}
-                rows={growthRows((m) => m.revenue)}
-              />
-              <GrowthCard
-                title="SPI"
-                sub="Sales per invoice (excl. VAT)"
-                fmt={fmtZAR2}
-                rows={growthRows((m) => m.spi)}
-              />
-              <GrowthCard
-                title="No. of invoices"
-                fmt={fmtNum}
-                rows={growthRows((m) => m.invoices)}
-              />
-            </div>
-          </div>
-
-          {/* Group trends */}
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Group monthly turnover (excl. VAT)</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <RevenueTrendChart data={bho.monthly} />
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Group average spend per transaction</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <AvgSpendTrendChart data={bho.monthly} />
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* By operations manager */}
-          <GroupBreakdown title="Turnover by operations manager" groups={bho.managers} />
-
-          {/* Store leaderboard, grouped by manager — click to drill into a store */}
+          {/* Yesterday — store leaderboard, grouped by manager; click to drill in */}
           {MANAGERS.map((mgr) => {
-            const stores = bho.stores.filter((s) => s.manager === mgr);
+            const stores = today.stores.filter((s) => s.manager === mgr);
             return (
               <Card key={mgr}>
                 <CardHeader>
@@ -297,8 +234,8 @@ export default async function DashboardPage() {
                           <TableHead>Store</TableHead>
                           <TableHead>Type</TableHead>
                           <TableHead className="text-right">Turnover (excl)</TableHead>
-                          <TableHead className="text-right">Transactions</TableHead>
-                          <TableHead className="text-right">Avg spend</TableHead>
+                          <TableHead className="text-right">Invoices</TableHead>
+                          <TableHead className="text-right">SPI</TableHead>
                           <TableHead className="text-right">GP %</TableHead>
                           <TableHead></TableHead>
                         </TableRow>
@@ -354,6 +291,69 @@ export default async function DashboardPage() {
               </Card>
             );
           })}
+
+          {/* Growth & trends — historical context (not yesterday) */}
+          <div className="mt-2 flex flex-wrap items-baseline gap-2 border-t pt-4">
+            <h2 className="text-lg font-semibold tracking-tight">Growth &amp; trends</h2>
+            <span className="text-muted-foreground text-sm">
+              comparisons &amp; history · since {start}
+            </span>
+          </div>
+
+          {/* Growth — latest complete month, MoM + YoY, split by store type */}
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-wrap items-baseline gap-2">
+              <h3 className="font-semibold tracking-tight">
+                {fmtMonth(gr.anchorMonth)}
+              </h3>
+              <span className="text-muted-foreground text-sm">
+                month-on-month &amp; year-on-year, by store type
+              </span>
+            </div>
+            {!gr.yoyAvailable ? (
+              <p className="text-muted-foreground text-xs">
+                Year-on-year appears once a matching prior-year month is in range.
+              </p>
+            ) : null}
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+              <GrowthCard
+                title="Revenue (excl. VAT)"
+                fmt={fmtZAR}
+                rows={growthRows((m) => m.revenue)}
+              />
+              <GrowthCard
+                title="SPI"
+                sub="Sales per invoice (excl. VAT)"
+                fmt={fmtZAR2}
+                rows={growthRows((m) => m.spi)}
+              />
+              <GrowthCard
+                title="No. of invoices"
+                fmt={fmtNum}
+                rows={growthRows((m) => m.invoices)}
+              />
+            </div>
+          </div>
+
+          {/* Group trends */}
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Group monthly turnover (excl. VAT)</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <RevenueTrendChart data={bho.monthly} />
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Group average spend per transaction</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <AvgSpendTrendChart data={bho.monthly} />
+              </CardContent>
+            </Card>
+          </div>
 
           {BHO_STORES_NO_DATA.length > 0 ? (
             <Card>

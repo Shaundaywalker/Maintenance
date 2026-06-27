@@ -79,6 +79,23 @@ export async function latestDataDate(node?: string): Promise<string | null> {
   return row[0]?.date ?? null;
 }
 
+/**
+ * The single "yesterday" date used across EVERY screen (group, leaderboard and
+ * per-store), so the same store reads the same number everywhere.
+ *
+ * = yesterday in SAST (the trading day just closed), unless the estate hasn't
+ * synced that far yet, in which case it falls back to the latest day with data.
+ * Partial "today" rows are ignored (we never anchor past yesterday).
+ */
+export async function anchorDay(): Promise<string> {
+  const sast = new Date(Date.now() + 2 * 60 * 60 * 1000); // UTC+2
+  sast.setUTCDate(sast.getUTCDate() - 1);
+  const yesterday = sast.toISOString().slice(0, 10);
+  const estateMax = await latestDataDate();
+  if (!estateMax) return yesterday;
+  return estateMax < yesterday ? estateMax : yesterday;
+}
+
 export async function getMetrics(
   start: string,
   end: string,
