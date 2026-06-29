@@ -25,6 +25,21 @@ function daysAgo(n: number): string {
   return d.toISOString().slice(0, 10);
 }
 
+/**
+ * List the store nodes (secret-protected) so the daily-sync job can loop and
+ * sync ONE store per request — keeping each call fast and well under the
+ * gateway timeout (syncing all 32 in a single request times out).
+ */
+export async function GET(req: Request) {
+  const secret = getSyncSecret();
+  const url = new URL(req.url);
+  const provided = req.headers.get("x-sync-secret") ?? url.searchParams.get("secret");
+  if (!secret || provided !== secret) {
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  }
+  return NextResponse.json({ nodes: BHO_STORES.map((s) => s.node) });
+}
+
 export async function POST(req: Request) {
   const secret = getSyncSecret();
   if (!secret || req.headers.get("x-sync-secret") !== secret) {

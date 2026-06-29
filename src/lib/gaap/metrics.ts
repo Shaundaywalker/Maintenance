@@ -10,9 +10,10 @@ export interface DailyPoint {
   turnover: number;
   turnoverExcl: number;
   grossProfit: number;
+  gpPct: number;
   costOfSales: number;
-  voids: number;
   wastage: number;
+  stockVariance: number;
   transactionCount: number;
   avgSpend: number;
 }
@@ -118,9 +119,10 @@ export async function getMetrics(
     turnover: r.turnover,
     turnoverExcl: r.turnoverExcl,
     grossProfit: r.grossProfit,
+    gpPct: r.turnoverExcl > 0 ? (r.grossProfit / r.turnoverExcl) * 100 : 0,
     costOfSales: r.costOfSales,
-    voids: r.voids,
     wastage: r.wastage,
+    stockVariance: r.shrinkage,
     transactionCount: r.transactionCount,
     avgSpend: r.avgSpend,
   }));

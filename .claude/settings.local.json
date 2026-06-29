@@ -20,7 +20,9 @@
       "Bash(git branch *)",
       "Bash(git commit -q -m 'Initial commit: Bootlegger dashboard boilerplate *)",
       "Bash(node --env-file-if-exists=.env --import tsx scripts/_check.ts)",
-      "Bash(cd \"/Users/Shaundaywalker/Desktop/JEM *)"
+      "Bash(cd \"/Users/Shaundaywalker/Desktop/JEM *)",
+      "Bash(curl -k -s '__TRACKED_VAR__/dailysummary?apikey=__TRACKED_VAR__&node=__TRACKED_VAR__&startdate=2026-06-15&enddate=2026-06-18')",
+      "Bash(python3 -c ' *)"
     ]
   }
 }

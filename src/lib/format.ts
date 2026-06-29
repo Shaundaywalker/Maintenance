@@ -47,6 +47,25 @@ export function fmtZARCompact(n: number): string {
   return `R${Math.round(v)}`;
 }
 
+/** "2026-06-26" -> "Fri, 26 Jun 2026" */
+export function fmtDayLong(d: string): string {
+  return new Date(d + "T00:00:00Z").toLocaleDateString("en-ZA", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+/** A from–to label: single day reads as one date, otherwise "26 Jun – 30 Jun 2026". */
+export function fmtPeriod(from: string, to: string): string {
+  if (from === to) return fmtDayLong(from);
+  const opts: Intl.DateTimeFormatOptions = { day: "numeric", month: "short", year: "numeric" };
+  const f = new Date(from + "T00:00:00Z").toLocaleDateString("en-ZA", opts);
+  const t = new Date(to + "T00:00:00Z").toLocaleDateString("en-ZA", opts);
+  return `${f} – ${t}`;
+}
+
 /** "2025-08" -> "Aug '25" */
 export function fmtMonth(ym: string): string {
   const [y, m] = ym.split("-").map(Number);

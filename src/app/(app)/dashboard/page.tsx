@@ -18,8 +18,11 @@ import {
   type GroupSummary,
   type Growth,
 } from "@/lib/gaap/metrics";
-import { BHO_STORES_NO_DATA, MANAGERS } from "@/lib/gaap/stores";
-import { fmtGrowth, fmtMonth, fmtNum, fmtPct, fmtZAR, fmtZAR2 } from "@/lib/format";
+import { BHO_STORES_NO_DATA, BHO_START_DATE, MANAGERS } from "@/lib/gaap/stores";
+import { fmtGrowth, fmtMonth, fmtNum, fmtPct, fmtPeriod, fmtZAR, fmtZAR2 } from "@/lib/format";
+import { DateRangePicker } from "@/components/dashboard/date-range";
+
+const isDate = (s?: string): s is string => !!s && /^\d{4}-\d{2}-\d{2}$/.test(s);
 import {
   AvgSpendTrendChart,
   DepartmentBarChart,
@@ -133,24 +136,25 @@ function GrowthCard({
   );
 }
 
-function fmtDay(d: string): string {
-  return new Date(d + "T00:00:00Z").toLocaleDateString("en-ZA", {
-    weekday: "short",
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
-}
-
-export default async function DashboardPage() {
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ from?: string; to?: string }>;
+}) {
   await requireUser();
   const { start, end } = defaultWindow();
-  // Full history powers the trends, growth and breakdowns.
+  // Full history powers the trends + growth context (independent of the picker).
   const bho = await getBhoOverview(start, end);
-  // The landing headline, breakdowns and store list all default to the same
-  // "yesterday" date so every figure reconciles with the per-store drilldowns.
-  const day = await anchorDay();
-  const today = await getBhoOverview(day, day);
+
+  // The period summary (KPIs, breakdowns, leaderboard) defaults to yesterday and
+  // follows the from–to picker. Same window everywhere so figures reconcile.
+  const yesterday = await anchorDay();
+  const sp = await searchParams;
+  let from = isDate(sp.from) ? sp.from : yesterday;
+  let to = isDate(sp.to) ? sp.to : yesterday;
+  if (from > to) [from, to] = [to, from];
+  const isYesterday = from === yesterday && to === yesterday;
+  const today = await getBhoOverview(from, to);
 
   const hasData = bho.totals.transactions > 0;
   const gr = bho.growth;
@@ -193,10 +197,15 @@ export default async function DashboardPage() {
         </Card>
       ) : (
         <>
-          {/* Yesterday headline */}
-          <div className="flex items-baseline gap-2">
-            <h2 className="text-lg font-semibold tracking-tight">Yesterday</h2>
-            <span className="text-muted-foreground text-sm">{fmtDay(day)}</span>
+          {/* Period summary — defaults to yesterday, driven by the from–to picker */}
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <div className="flex items-baseline gap-2">
+              <h2 className="text-lg font-semibold tracking-tight">
+                {isYesterday ? "Yesterday" : "Selected period"}
+              </h2>
+              <span className="text-muted-foreground text-sm">{fmtPeriod(from, to)}</span>
+            </div>
+            <DateRangePicker from={from} to={to} min={start} max={end} />
           </div>
           <div className="grid grid-cols-2 gap-4 lg:grid-cols-4 xl:grid-cols-7">
             <Stat label="Group turnover (excl. VAT)" value={fmtZAR(today.totals.turnoverExcl)} />
