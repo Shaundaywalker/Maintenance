@@ -35,9 +35,11 @@ function Stat({ label, value, sub }: { label: string; value: string; sub?: strin
   return (
     <Card>
       <CardContent className="pt-6">
-        <div className="text-muted-foreground text-sm">{label}</div>
-        <div className="mt-1 text-2xl font-semibold tracking-tight tabular-nums">{value}</div>
-        {sub ? <div className="text-muted-foreground mt-1 text-xs">{sub}</div> : null}
+        <div className="text-muted-foreground truncate text-sm">{label}</div>
+        <div className="mt-1 text-xl font-semibold tracking-tight tabular-nums whitespace-nowrap">
+          {value}
+        </div>
+        {sub ? <div className="text-muted-foreground mt-1 truncate text-xs">{sub}</div> : null}
       </CardContent>
     </Card>
   );
@@ -207,7 +209,7 @@ export default async function DashboardPage({
             </div>
             <DateRangePicker from={from} to={to} min={start} max={end} />
           </div>
-          <div className="grid grid-cols-2 gap-4 lg:grid-cols-4 xl:grid-cols-7">
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
             <Stat label="Group turnover (excl. VAT)" value={fmtZAR(today.totals.turnoverExcl)} />
             <Stat label="SPI" value={fmtZAR2(today.totals.avgSpend)} sub="sales per invoice" />
             <Stat

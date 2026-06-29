@@ -33,9 +33,11 @@ function Stat({ label, value, sub }: { label: string; value: string; sub?: strin
   return (
     <Card>
       <CardContent className="pt-6">
-        <div className="text-muted-foreground text-sm">{label}</div>
-        <div className="mt-1 text-2xl font-semibold tracking-tight tabular-nums">{value}</div>
-        {sub ? <div className="text-muted-foreground mt-1 text-xs">{sub}</div> : null}
+        <div className="text-muted-foreground truncate text-sm">{label}</div>
+        <div className="mt-1 text-xl font-semibold tracking-tight tabular-nums whitespace-nowrap">
+          {value}
+        </div>
+        {sub ? <div className="text-muted-foreground mt-1 truncate text-xs">{sub}</div> : null}
       </CardContent>
     </Card>
   );
@@ -105,7 +107,7 @@ export default async function StorePage({
         </div>
         <DateRangePicker from={from} to={to} min={BHO_START_DATE} max={end} />
       </div>
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-3 xl:grid-cols-6">
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
         <Stat label="Turnover (excl. VAT)" value={fmtZAR(period.totals.turnoverExcl)} />
         <Stat label="SPI" value={fmtZAR2(period.totals.avgSpend)} sub="sales per invoice" />
         <Stat label="Gross profit" value={fmtZAR(period.totals.grossProfit)} sub={`${fmtPct(period.totals.gpPct)} margin`} />
